@@ -164,15 +164,15 @@
 
 <h1 title="My-AI Chat">MAI Chat</h1>
 
-{#if infoMessage.length > 0}
+{#if errorMessage.length > 0}
+    <p class="has-text-danger"><b>ERROR: </b> {errorMessage}</p>
+
+    <img src="img/gif2.gif" alt="Loading!" />
+{:else if infoMessage.length > 0}
     <p><b>{infoMessage}</b></p>
 {/if}
 
-{#if errorMessage.length > 0}
-    <p class="has-text-danger"><b>ERROR: </b> {errorMessage}</p>
-{/if}
-
-{#if !modelLoaded}
+{#if !modelLoaded && errorMessage.length === 0}
     <img src="img/gif0.gif" alt="Loading!" />
 {/if}
 
