@@ -1,5 +1,7 @@
 <script lang="ts">
+    import { models } from "$lib/models";
     import * as webllm from "@mlc-ai/web-llm";
+    import { marked } from "marked";
     import { onMount, tick } from "svelte";
     import { z } from "zod";
 
@@ -11,32 +13,18 @@
 
     type InitProgress = z.infer<typeof InitProgress>;
 
-    // Models:
-    // https://github.com/mlc-ai/web-llm/blob/22f0d37c5e68515059ba63ff5ba56f54324bc820/src/config.ts#L310
-    const selectedModel = "TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC";
+    const systemMessage: webllm.ChatCompletionMessageParam = {
+        role: "system",
+        content: "You are a helpful AI assistant.",
+    };
 
-    // Low vram usage:
-    // Phi-3-mini-4k-instruct-q4f16_1-MLC-1k
-    // gemma-2b-it-q4f16_1-MLC
-    // gemma-2b-it-q4f32_1-MLC
-    // gemma-2b-it-q4f16_1-MLC-1k
-    // gemma-2b-it-q4f32_1-MLC-1k
-    // Qwen1.5-1.8B-Chat-q4f16_1-MLC-1k
-    // stablelm-2-zephyr-1_6b-q4f16_1-MLC-1k
-    // stablelm-2-zephyr-1_6b-q4f32_1-MLC-1k
-    // RedPajama-INCITE-Chat-3B-v1-q4f16_1-MLC-1k
-    // phi-1_5-q4f16_1-MLC
-    // phi-1_5-q4f32_1-MLC
-    // phi-1_5-q4f16_1-MLC-1k
-    // phi-1_5-q4f32_1-MLC-1k
-    // TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC
-    // TinyLlama-1.1B-Chat-v0.4-q4f32_1-MLC
-    // TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC-1k
-    // TinyLlama-1.1B-Chat-v0.4-q4f32_1-MLC-1k
-
+    let lowResources: boolean = true;
+    let selectedModel = "";
+    let loadedModel = "";
     let inputPromt: HTMLTextAreaElement;
     let pivot: HTMLElement;
     let engine: webllm.MLCEngine;
+    let loadingModel: boolean = false;
     let modelLoaded: boolean = false;
     let infoMessage: string = "";
     let errorMessage: string = "";
@@ -44,60 +32,37 @@
     let thinking: boolean = false;
     let thinkingMessage: string = "";
     let thinkingMessageDots: number = 3;
-
-    const systemMessage: webllm.ChatCompletionMessageParam = {
-        role: "system",
-        content: "You are a helpful AI assistant.",
-    };
-
     let messages: webllm.ChatCompletionMessageParam[] = [];
 
-    function handlePromtKeyDown(key: string): void {
-        if (key === "Enter") {
-            processPromt();
-        }
-    }
+    $: filteredModels = lowResources
+        ? models.filter((x) => x.lowResourcesRequired)
+        : models;
 
-    async function processPromt(): Promise<void> {
-        thinking = true;
-
-        try {
-            const userMessage: webllm.ChatCompletionMessageParam = {
-                role: "user",
-                content: promt,
-            };
-
-            const messagesToProcess: webllm.ChatCompletionMessageParam[] = [
-                systemMessage,
-                ...messages,
-                userMessage,
-            ];
-
-            const reply = await engine.chat.completions.create({
-                stream: false,
-                messages: messagesToProcess,
-            });
-
-            promt = "";
-            messages = [...messages, userMessage, reply.choices[0].message];
-        } catch (error) {
-            const msg = `failed to process promt: <${promt}>`;
-            console.error(msg, error);
-            messages = [
-                ...messages,
-                {
-                    role: "assistant",
-                    content: msg,
-                },
-            ];
+    function sizeToString(sizeInMB: number): string {
+        if (sizeInMB < 1000) {
+            return `${sizeInMB.toFixed(1)} MB`;
         }
 
-        inputPromt.focus();
-        thinking = false;
+        const sizeInGB = sizeInMB / 1024;
+        return `${sizeInGB.toFixed(1)} GB`;
     }
 
-    onMount(async () => {
+    function handleSelectedModelUpdated(): void {
+        console.log(`Model: ${selectedModel}`);
+        errorMessage = "";
+        infoMessage =
+            "The next message will trigger the model to be downloaded. The message history will be maintained.";
+    }
+
+    async function loadModel(): Promise<void> {
         try {
+            console.log(`Model: ${selectedModel}`);
+            if (selectedModel === loadedModel) {
+                console.log("Model already loaded");
+                return;
+            }
+
+            loadingModel = true;
             modelLoaded = false;
 
             const initProgressCallback = (maybeInitProgress: unknown) => {
@@ -123,10 +88,9 @@
             });
 
             infoMessage = "";
-            promt =
-                "A karaoke is composed of a number of syllables. A syllable has a text and a duration in centiseconds.\nBased on what I just wrote, what is a karaoke?";
+            loadingModel = false;
             modelLoaded = true;
-
+            loadedModel = selectedModel;
             await tick();
             inputPromt.focus();
 
@@ -155,6 +119,62 @@
             console.error(msg, error);
             errorMessage = msg;
         }
+    }
+
+    function handlePromtKeyDown(key: string): void {
+        if (key === "Enter") {
+            processPromt();
+        }
+    }
+
+    async function processPromt(): Promise<void> {
+        await loadModel();
+        thinking = true;
+
+        try {
+            const userMessage: webllm.ChatCompletionMessageParam = {
+                role: "user",
+                content: promt,
+            };
+
+            const messagesToProcess: webllm.ChatCompletionMessageParam[] = [
+                systemMessage,
+                ...messages,
+                userMessage,
+            ];
+
+            const reply = await engine.chat.completions.create({
+                stream: false,
+                messages: messagesToProcess,
+            });
+
+            reply.choices[0].message.content = await marked.parse(
+                reply.choices[0].message.content ?? "",
+            );
+
+            console.log(reply.choices[0].message.content);
+
+            messages = [...messages, userMessage, reply.choices[0].message];
+            promt = "";
+        } catch (error) {
+            const msg = `failed to process promt: <${promt}>`;
+            console.error(msg, error);
+            messages = [
+                ...messages,
+                {
+                    role: "assistant",
+                    content: msg,
+                },
+            ];
+        }
+
+        inputPromt.focus();
+        thinking = false;
+    }
+
+    onMount(() => {
+        selectedModel = "TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC";
+        handleSelectedModelUpdated();
     });
 </script>
 
@@ -164,24 +184,46 @@
 
 <h1 title="My-AI Chat">MAI Chat</h1>
 
+<div class="model-selector">
+    <label class="checkbox">
+        <input type="checkbox" bind:checked={lowResources} />
+        Low resources ({filteredModels.length} models)
+    </label>
+
+    <div class="select">
+        <select
+            bind:value={selectedModel}
+            on:change={() => handleSelectedModelUpdated()}
+            disabled={loadingModel || thinking}
+        >
+            {#each filteredModels as model}
+                <option value={model.id}
+                    >{model.id} ({sizeToString(model.vramRequiredInMB)})</option
+                >
+            {/each}
+        </select>
+    </div>
+</div>
+
 {#if errorMessage.length > 0}
     <p class="has-text-danger"><b>ERROR: </b> {errorMessage}</p>
 
-    <img src="img/gif2.gif" alt="Loading!" />
+    <img src="img/gif2.gif" alt="Error!" />
 {:else if infoMessage.length > 0}
     <p><b>{infoMessage}</b></p>
 {/if}
 
-{#if !modelLoaded && errorMessage.length === 0}
+{#if loadingModel && errorMessage.length === 0}
     <img src="img/gif0.gif" alt="Loading!" />
 {/if}
 
-{#if modelLoaded}
-    <p class="has-text-success">Model: <b>{selectedModel}</b></p>
-
+{#if selectedModel.length > 0}
     <div class="messages">
         {#each messages as msg, i}
-            <p class="message"><b>{i + 1}. [{msg.role}]:</b> {msg.content}</p>
+            <p class="message">
+                <b>{i + 1}. [{msg.role}]:</b>
+            </p>
+            <div>{@html msg.content}</div>
         {/each}
     </div>
 
@@ -198,14 +240,14 @@
                 placeholder="Ask me anything"
                 bind:value={promt}
                 on:keydown={(e) => handlePromtKeyDown(e.key)}
-                disabled={thinking}
+                disabled={loadingModel || thinking}
             />
         </div>
     </div>
 
     <button
         class="button is-link is-fullwidth mt-2"
-        disabled={thinking}
+        disabled={loadingModel || thinking}
         bind:this={pivot}
         on:click={() => processPromt()}>Send</button
     >
@@ -230,5 +272,16 @@
         width: 100%;
         text-align: center;
         font-weight: bold;
+    }
+
+    .model-selector {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 1rem;
+    }
+
+    select {
+        width: 100%;
     }
 </style>
