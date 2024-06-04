@@ -34,7 +34,7 @@
     // TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC-1k
     // TinyLlama-1.1B-Chat-v0.4-q4f32_1-MLC-1k
 
-    let inputPromt: HTMLInputElement;
+    let inputPromt: HTMLTextAreaElement;
     let pivot: HTMLElement;
     let engine: webllm.MLCEngine;
     let modelLoaded: boolean = false;
@@ -45,17 +45,12 @@
     let thinkingMessage: string = "";
     let thinkingMessageDots: number = 3;
 
-    let messages: webllm.ChatCompletionMessageParam[] = [
-        {
-            role: "system",
-            content: "You are a helpful AI assistant.",
-        },
-        {
-            role: "user",
-            content:
-                "A karaoke is composed of a number of syllables. A syllable has a text and a duration in centiseconds.",
-        },
-    ];
+    const systemMessage: webllm.ChatCompletionMessageParam = {
+        role: "system",
+        content: "You are a helpful AI assistant.",
+    };
+
+    let messages: webllm.ChatCompletionMessageParam[] = [];
 
     function handlePromtKeyDown(key: string): void {
         if (key === "Enter") {
@@ -67,21 +62,24 @@
         thinking = true;
 
         try {
-            messages = [
+            const userMessage: webllm.ChatCompletionMessageParam = {
+                role: "user",
+                content: promt,
+            };
+
+            const messagesToProcess: webllm.ChatCompletionMessageParam[] = [
+                systemMessage,
                 ...messages,
-                {
-                    role: "user",
-                    content: promt,
-                },
+                userMessage,
             ];
 
             const reply = await engine.chat.completions.create({
                 stream: false,
-                messages,
+                messages: messagesToProcess,
             });
 
             promt = "";
-            messages = [...messages, reply.choices[0].message];
+            messages = [...messages, userMessage, reply.choices[0].message];
         } catch (error) {
             const msg = `failed to process promt: <${promt}>`;
             console.error(msg, error);
@@ -125,7 +123,8 @@
             });
 
             infoMessage = "";
-            promt = "Based on what I just wrote, what is a karaoke?";
+            promt =
+                "A karaoke is composed of a number of syllables. A syllable has a text and a duration in centiseconds.\nBased on what I just wrote, what is a karaoke?";
             modelLoaded = true;
 
             await tick();
@@ -191,11 +190,10 @@
         <img src="img/gif1.webp" alt="Thinking!" />
     {/if}
 
-    <div class="field">
+    <div class="field mt-2">
         <div class="control">
-            <input
+            <textarea
                 bind:this={inputPromt}
-                type="text"
                 class="input"
                 placeholder="Ask me anything"
                 bind:value={promt}
@@ -215,12 +213,17 @@
 
 <style>
     .messages {
+        width: 100%;
         display: flex;
         flex-direction: column;
     }
 
     .field {
         width: 100%;
+    }
+
+    textarea {
+        min-height: 10rem;
     }
 
     .thinking {
