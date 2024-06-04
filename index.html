@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+
+<head>
+	<meta charset="utf-8" />
+	<base href="/mai-chat/" />
+	<link rel="icon" href="./favicon.png" />
+	<link rel="manifest" href="./manifest.json" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+		integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
+		crossorigin="anonymous" referrerpolicy="no-referrer" />
+	
+		<link href="./_app/immutable/assets/0.Dhdu-g02.css" rel="stylesheet">
+		<link href="./_app/immutable/assets/2.BjVBOWF7.css" rel="stylesheet">
+		<link rel="modulepreload" href="./_app/immutable/entry/start.D4W_bqXz.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/entry.BVZBEI1g.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/scheduler.xiAKmmds.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/index.D0nIf-c0.js">
+		<link rel="modulepreload" href="./_app/immutable/entry/app.BMYOjaL5.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/index.B2rytJZO.js">
+		<link rel="modulepreload" href="./_app/immutable/nodes/0.CMg1fFl8.js">
+		<link rel="modulepreload" href="./_app/immutable/nodes/2.DJauhOgi.js">
+</head>
+
+<body data-sveltekit-preload-data="hover">
+	<div style="display: contents">  <div class="app svelte-15hr64"><main class="svelte-15hr64"><section class="svelte-m85pha"> </section></main> </div> 
+			
+			<script>
+				{
+					__sveltekit_1m6lywh = {
+						base: new URL(".", location).pathname.slice(0, -1)
+					};
+
+					const element = document.currentScript.parentElement;
+
+					const data = [null,null];
+
+					Promise.all([
+						import("./_app/immutable/entry/start.D4W_bqXz.js"),
+						import("./_app/immutable/entry/app.BMYOjaL5.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element, {
+							node_ids: [0, 2],
+							data,
+							form: null,
+							error: null
+						});
+					});
+				}
+			</script>
+		</div>
+
+	<script>
+		if ("serviceWorker" in navigator) {
+			window.addEventListener("load", function () {
+				navigator.serviceWorker
+					.register("worker.js")
+					.then(
+						function (registration) {
+							console.log("Worker registration successful", registration.scope);
+						},
+						function (err) {
+							console.log("Worker registration failed", err);
+						}
+					)
+					.catch(function (err) {
+						console.log(err);
+					});
+			});
+		} else {
+			console.log("Service Worker is not supported by browser.");
+		}
+	</script>
+</body>
+
+</html>
