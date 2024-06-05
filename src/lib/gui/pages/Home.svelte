@@ -13,19 +13,20 @@
 
     type InitProgress = z.infer<typeof InitProgress>;
 
-    const systemMessage: webllm.ChatCompletionMessageParam = {
-        role: "system",
-        content: "You are a helpful AI assistant.",
-    };
+    const defaultModel: string = "TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC";
 
+    const defaultSystemMessageContent: string =
+        "You are a helpful AI assistant.";
+
+    let systemMessageContent: string = defaultSystemMessageContent;
+    let settingsVisible: boolean = false;
     let lowResources: boolean = true;
-    let selectedModel = "";
-    let loadedModel = "";
+    let selectedModel: string = "";
+    let loadedModel: string = "";
     let inputPromt: HTMLTextAreaElement;
     let pivot: HTMLElement;
     let engine: webllm.MLCEngine;
     let loadingModel: boolean = false;
-    let modelLoaded: boolean = false;
     let infoMessage: string = "";
     let errorMessage: string = "";
     let promt: string = "";
@@ -37,6 +38,12 @@
     $: filteredModels = lowResources
         ? models.filter((x) => x.lowResourcesRequired)
         : models;
+
+    function applyDefaultSettings(): void {
+        lowResources = true;
+        selectedModel = defaultModel;
+        systemMessageContent = defaultSystemMessageContent;
+    }
 
     function sizeToString(sizeInMB: number): string {
         if (sizeInMB < 1000) {
@@ -63,7 +70,6 @@
             }
 
             loadingModel = true;
-            modelLoaded = false;
 
             const initProgressCallback = (maybeInitProgress: unknown) => {
                 console.log(maybeInitProgress);
@@ -89,7 +95,6 @@
 
             infoMessage = "";
             loadingModel = false;
-            modelLoaded = true;
             loadedModel = selectedModel;
             await tick();
             inputPromt.focus();
@@ -137,6 +142,11 @@
                 content: promt,
             };
 
+            const systemMessage: webllm.ChatCompletionMessageParam = {
+                role: "system",
+                content: systemMessageContent,
+            };
+
             const messagesToProcess: webllm.ChatCompletionMessageParam[] = [
                 systemMessage,
                 ...messages,
@@ -173,7 +183,7 @@
     }
 
     onMount(() => {
-        selectedModel = "TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC";
+        selectedModel = defaultModel;
         handleSelectedModelUpdated();
     });
 </script>
@@ -184,73 +194,111 @@
 
 <h1 title="My-AI Chat">MAI Chat</h1>
 
-<div class="model-selector">
-    <label class="checkbox">
-        <input type="checkbox" bind:checked={lowResources} />
-        Low resources ({filteredModels.length} models)
-    </label>
-
-    <div class="select">
-        <select
-            bind:value={selectedModel}
-            on:change={() => handleSelectedModelUpdated()}
-            disabled={loadingModel || thinking}
-        >
-            {#each filteredModels as model}
-                <option value={model.id}
-                    >{model.id} ({sizeToString(model.vramRequiredInMB)})</option
-                >
-            {/each}
-        </select>
-    </div>
-</div>
-
-{#if errorMessage.length > 0}
-    <p class="has-text-danger"><b>ERROR: </b> {errorMessage}</p>
-
-    <img src="img/gif2.gif" alt="Error!" />
-{:else if infoMessage.length > 0}
-    <p><b>{infoMessage}</b></p>
-{/if}
-
-{#if loadingModel && errorMessage.length === 0}
-    <img src="img/gif0.gif" alt="Loading!" />
-{/if}
-
-{#if selectedModel.length > 0}
-    <div class="messages">
-        {#each messages as msg, i}
-            <p class="message">
-                <b>{i + 1}. [{msg.role}]:</b>
-            </p>
-            <div>{@html msg.content}</div>
-        {/each}
-    </div>
-
-    {#if thinking}
-        <p class="thinking">{thinkingMessage}</p>
-        <img src="img/gif1.webp" alt="Thinking!" />
-    {/if}
-
-    <div class="field mt-2">
-        <div class="control">
-            <textarea
-                bind:this={inputPromt}
-                class="input"
-                placeholder="Ask me anything"
-                bind:value={promt}
-                on:keydown={(e) => handlePromtKeyDown(e.key)}
-                disabled={loadingModel || thinking}
-            />
-        </div>
-    </div>
+{#if settingsVisible}
+    <button
+        class="button is-success is-fullwidth"
+        on:click={() => (settingsVisible = !settingsVisible)}
+        disabled={systemMessageContent.length === 0}
+    >
+        Save settings
+    </button>
 
     <button
         class="button is-link is-fullwidth mt-2"
-        disabled={loadingModel || thinking}
-        bind:this={pivot}
-        on:click={() => processPromt()}>Send</button
+        on:click={() => applyDefaultSettings()}
     >
+        Reset to default
+    </button>
+
+    <div class="model-selector mt-2">
+        <label class="checkbox">
+            <input type="checkbox" bind:checked={lowResources} />
+            Low resources ({filteredModels.length} models)
+        </label>
+
+        <div class="select">
+            <select
+                bind:value={selectedModel}
+                on:change={() => handleSelectedModelUpdated()}
+                disabled={loadingModel || thinking}
+            >
+                {#each filteredModels as model}
+                    <option value={model.id}
+                        >{model.id} ({sizeToString(
+                            model.vramRequiredInMB,
+                        )})</option
+                    >
+                {/each}
+            </select>
+        </div>
+    </div>
+
+    <div class="field">
+        <label class="label" for="">System message</label>
+        <div class="control">
+            <input
+                class="input"
+                type="text"
+                bind:value={systemMessageContent}
+                placeholder={defaultSystemMessageContent}
+            />
+        </div>
+    </div>
+{:else}
+    <button
+        class="button is-fullwidth"
+        on:click={() => (settingsVisible = !settingsVisible)}
+    >
+        Settings
+    </button>
+
+    {#if errorMessage.length > 0}
+        <p class="has-text-danger"><b>ERROR: </b> {errorMessage}</p>
+
+        <img src="img/gif2.gif" alt="Error!" />
+    {:else if infoMessage.length > 0}
+        <p><b>{infoMessage}</b></p>
+    {/if}
+
+    {#if loadingModel && errorMessage.length === 0}
+        <img src="img/gif0.gif" alt="Loading!" />
+    {/if}
+
+    {#if selectedModel.length > 0}
+        <div class="messages">
+            {#each messages as msg, i}
+                <p class="message">
+                    <b>{i + 1}. [{msg.role}]:</b>
+                </p>
+                <div>{@html msg.content}</div>
+            {/each}
+        </div>
+
+        {#if thinking}
+            <p class="thinking">{thinkingMessage}</p>
+            <img src="img/gif1.webp" alt="Thinking!" />
+        {/if}
+
+        <div class="field mt-2">
+            <div class="control">
+                <textarea
+                    bind:this={inputPromt}
+                    class="input"
+                    placeholder="Ask me anything"
+                    bind:value={promt}
+                    on:keydown={(e) => handlePromtKeyDown(e.key)}
+                    disabled={loadingModel || thinking}
+                />
+            </div>
+        </div>
+
+        <button
+            class="button is-link is-fullwidth mt-2"
+            disabled={loadingModel || thinking}
+            bind:this={pivot}
+            on:click={() => processPromt()}>Send</button
+        >
+    {/if}
 {/if}
 
 <style>
