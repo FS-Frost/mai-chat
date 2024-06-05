@@ -13,15 +13,43 @@
 
     type InitProgress = z.infer<typeof InitProgress>;
 
+    const Settings = z.object({
+        lowResources: z.boolean(),
+        selectedModel: z.string(),
+        systemMessageContent: z.string(),
+        streamResponses: z.boolean(),
+        animationsEnabled: z.boolean(),
+        useIndexedDBCache: z.boolean(),
+    });
+
+    type Settings = z.infer<typeof Settings>;
+
+    const keySetings: string = "maichat.settings";
+
     const defaultModel: string = "TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC";
 
     const defaultSystemMessageContent: string =
         "You are a helpful AI assistant.";
 
-    let systemMessageContent: string = defaultSystemMessageContent;
+    const defaultSettings: Settings = {
+        selectedModel: defaultModel,
+        systemMessageContent: defaultSystemMessageContent,
+        lowResources: true,
+        animationsEnabled: true,
+        streamResponses: true,
+        useIndexedDBCache: false,
+    };
+
+    let settings: Settings = {
+        lowResources: true,
+        selectedModel: "",
+        streamResponses: true,
+        systemMessageContent: "",
+        animationsEnabled: true,
+        useIndexedDBCache: false,
+    };
+
     let settingsVisible: boolean = false;
-    let lowResources: boolean = true;
-    let selectedModel: string = "";
     let loadedModel: string = "";
     let inputPromt: HTMLTextAreaElement;
     let pivot: HTMLElement;
@@ -30,19 +58,18 @@
     let infoMessage: string = "";
     let errorMessage: string = "";
     let promt: string = "";
+    let writtingResponse: boolean = false;
     let thinking: boolean = false;
     let thinkingMessage: string = "";
     let thinkingMessageDots: number = 3;
     let messages: webllm.ChatCompletionMessageParam[] = [];
 
-    $: filteredModels = lowResources
+    $: filteredModels = settings.lowResources
         ? models.filter((x) => x.lowResourcesRequired)
         : models;
 
     function applyDefaultSettings(): void {
-        lowResources = true;
-        selectedModel = defaultModel;
-        systemMessageContent = defaultSystemMessageContent;
+        settings = structuredClone(defaultSettings);
     }
 
     function sizeToString(sizeInMB: number): string {
@@ -55,7 +82,7 @@
     }
 
     function handleSelectedModelUpdated(): void {
-        console.log(`Model: ${selectedModel}`);
+        console.log(`Model: ${settings.selectedModel}`);
         errorMessage = "";
         infoMessage =
             "The next message will trigger the model to be downloaded. The message history will be maintained.";
@@ -63,8 +90,8 @@
 
     async function loadModel(): Promise<void> {
         try {
-            console.log(`Model: ${selectedModel}`);
-            if (selectedModel === loadedModel) {
+            console.log(`Model: ${settings.selectedModel}`);
+            if (settings.selectedModel === loadedModel) {
                 console.log("Model already loaded");
                 return;
             }
@@ -88,14 +115,17 @@
                 );
             };
 
-            infoMessage = `Load LLM model: ${selectedModel}`;
-            engine = await webllm.CreateMLCEngine(selectedModel, {
+            infoMessage = `Load LLM model: ${settings.selectedModel}`;
+            const mlConfig = webllm.prebuiltAppConfig;
+            mlConfig.useIndexedDBCache = settings.useIndexedDBCache;
+            engine = await webllm.CreateMLCEngine(settings.selectedModel, {
+                appConfig: mlConfig,
                 initProgressCallback,
             });
 
             infoMessage = "";
             loadingModel = false;
-            loadedModel = selectedModel;
+            loadedModel = settings.selectedModel;
             await tick();
             inputPromt.focus();
 
@@ -126,10 +156,58 @@
         }
     }
 
+    function formatRole(role: string): string {
+        if (role.length === 0) {
+            return "";
+        }
+
+        if (role.length == 1) {
+            return role.toUpperCase();
+        }
+
+        return role[0].toUpperCase() + role.substring(1);
+    }
+
     function handlePromtKeyDown(key: string): void {
         if (key === "Enter") {
             processPromt();
         }
+    }
+
+    async function handleFullResponse(
+        messagesToProcess: webllm.ChatCompletionMessageParam[],
+    ): Promise<string> {
+        const reply = await engine.chat.completions.create({
+            stream: false,
+            messages: messagesToProcess,
+        });
+
+        if (reply.choices.length === 0) {
+            return "";
+        }
+
+        return reply.choices[0].message.content ?? "";
+    }
+
+    async function handleChunksResponse(
+        messagesToProcess: webllm.ChatCompletionMessageParam[],
+    ): Promise<string> {
+        const chunks = await engine.chat.completions.create({
+            messages: messagesToProcess,
+            temperature: 1,
+            stream: true,
+        });
+
+        writtingResponse = true;
+        let fullReplyContent = "";
+        for await (const chunk of chunks) {
+            const text = chunk.choices[0].delta.content ?? "";
+            messages[messages.length - 1].content += text;
+            fullReplyContent += text;
+            await tick();
+        }
+
+        return fullReplyContent;
     }
 
     async function processPromt(): Promise<void> {
@@ -144,7 +222,7 @@
 
             const systemMessage: webllm.ChatCompletionMessageParam = {
                 role: "system",
-                content: systemMessageContent,
+                content: settings.systemMessageContent,
             };
 
             const messagesToProcess: webllm.ChatCompletionMessageParam[] = [
@@ -153,19 +231,28 @@
                 userMessage,
             ];
 
-            const reply = await engine.chat.completions.create({
-                stream: false,
-                messages: messagesToProcess,
-            });
-
-            reply.choices[0].message.content = await marked.parse(
-                reply.choices[0].message.content ?? "",
-            );
-
-            console.log(reply.choices[0].message.content);
-
-            messages = [...messages, userMessage, reply.choices[0].message];
             promt = "";
+
+            messages = [
+                ...messages,
+                userMessage,
+                {
+                    role: "assistant",
+                    content: "",
+                },
+            ];
+
+            const handler = settings.streamResponses
+                ? handleChunksResponse
+                : handleFullResponse;
+
+            const fullReplyContent = await handler(messagesToProcess);
+            const parsedReplyContent = await marked.parse(fullReplyContent);
+            console.log(parsedReplyContent);
+
+            messages[messages.length - 1].content = parsedReplyContent;
+            promt = "";
+            writtingResponse = false;
         } catch (error) {
             const msg = `failed to process promt: <${promt}>`;
             console.error(msg, error);
@@ -182,8 +269,31 @@
         thinking = false;
     }
 
+    function saveSettings(): void {
+        localStorage.setItem(keySetings, JSON.stringify(settings));
+        settingsVisible = !settingsVisible;
+    }
+
+    function loadSettings(): void {
+        try {
+            const rawSettings = localStorage.getItem(keySetings) ?? "{}";
+            const maybeSettings = JSON.parse(rawSettings);
+            const parseResult = Settings.safeParse(maybeSettings);
+            if (parseResult.success) {
+                settings = parseResult.data;
+                console.log("settings loaded", settings);
+                return;
+            }
+        } catch (error) {
+            console.error("failed to load settings", error);
+        }
+
+        applyDefaultSettings();
+    }
+
     onMount(() => {
-        selectedModel = defaultModel;
+        loadSettings();
+        settings.selectedModel = defaultModel;
         handleSelectedModelUpdated();
     });
 </script>
@@ -197,8 +307,8 @@
 {#if settingsVisible}
     <button
         class="button is-success is-fullwidth"
-        on:click={() => (settingsVisible = !settingsVisible)}
-        disabled={systemMessageContent.length === 0}
+        on:click={() => saveSettings()}
+        disabled={settings.systemMessageContent.length === 0}
     >
         Save settings
     </button>
@@ -211,14 +321,14 @@
     </button>
 
     <div class="model-selector mt-2">
-        <label class="checkbox">
-            <input type="checkbox" bind:checked={lowResources} />
+        <label class="checkbox mb-1">
+            <input type="checkbox" bind:checked={settings.lowResources} />
             Low resources ({filteredModels.length} models)
         </label>
 
         <div class="select">
             <select
-                bind:value={selectedModel}
+                bind:value={settings.selectedModel}
                 on:change={() => handleSelectedModelUpdated()}
                 disabled={loadingModel || thinking}
             >
@@ -239,10 +349,31 @@
             <input
                 class="input"
                 type="text"
-                bind:value={systemMessageContent}
+                bind:value={settings.systemMessageContent}
                 placeholder={defaultSystemMessageContent}
             />
         </div>
+    </div>
+
+    <div class="field">
+        <label class="checkbox">
+            <input type="checkbox" bind:checked={settings.useIndexedDBCache} />
+            Use IndexedDB Cache (instead of Cache API)
+        </label>
+    </div>
+
+    <div class="field">
+        <label class="checkbox">
+            <input type="checkbox" bind:checked={settings.streamResponses} />
+            Stream responses
+        </label>
+    </div>
+
+    <div class="field">
+        <label class="checkbox">
+            <input type="checkbox" bind:checked={settings.animationsEnabled} />
+            Show animations
+        </label>
     </div>
 {:else}
     <button
@@ -255,26 +386,29 @@
     {#if errorMessage.length > 0}
         <p class="has-text-danger"><b>ERROR: </b> {errorMessage}</p>
 
-        <img src="img/gif2.gif" alt="Error!" />
+        {#if settings.animationsEnabled}
+            <img src="img/gif2.gif" alt="Error!" />
+        {/if}
     {:else if infoMessage.length > 0}
         <p><b>{infoMessage}</b></p>
     {/if}
 
-    {#if loadingModel && errorMessage.length === 0}
+    {#if settings.animationsEnabled && loadingModel && errorMessage.length === 0}
         <img src="img/gif0.gif" alt="Loading!" />
     {/if}
 
-    {#if selectedModel.length > 0}
+    {#if settings.selectedModel.length > 0}
         <div class="messages">
-            {#each messages as msg, i}
+            {#each messages as msg}
                 <p class="message">
-                    <b>{i + 1}. [{msg.role}]:</b>
+                    <b>{formatRole(msg.role)}:</b>
                 </p>
+
                 <div>{@html msg.content}</div>
             {/each}
         </div>
 
-        {#if thinking}
+        {#if settings.animationsEnabled && thinking && !writtingResponse}
             <p class="thinking">{thinkingMessage}</p>
             <img src="img/gif1.webp" alt="Thinking!" />
         {/if}
@@ -306,6 +440,10 @@
         width: 100%;
         display: flex;
         flex-direction: column;
+    }
+
+    .message {
+        margin-bottom: 0;
     }
 
     .field {
