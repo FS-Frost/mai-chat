@@ -4,7 +4,13 @@
 
 https://fs-frost.github.io/mai-chat/
 
-AI-powered chat just for fun.
+AI-powered chat to run LLMs on the browser.
+
+- Runs **everything** (models, chat history, and settings) on your machine.
+- Multimodel: TinyLlama, Llama 3, Phi-3, and more.
+- Installable as [PWA](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps).
+
+<img src="static/img/preview.png" alt="Preview" />
 
 ## Built with
 
