@@ -25,6 +25,7 @@
     type Settings = z.infer<typeof Settings>;
 
     const keySetings: string = "maichat.settings";
+    const keyChatHistory: string = "maichat.chatHistory";
 
     const defaultModel: string = "TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC";
 
@@ -253,6 +254,7 @@
             messages[messages.length - 1].content = parsedReplyContent;
             promt = "";
             writtingResponse = false;
+            saveChatHistory();
         } catch (error) {
             const msg = `failed to process promt: <${promt}>`;
             console.error(msg, error);
@@ -291,9 +293,53 @@
         applyDefaultSettings();
     }
 
+    const ChatHistory = z
+        .object({
+            role: z.enum(["user", "system", "assistant", "tool"]),
+            content: z.string(),
+        })
+        .array();
+
+    function saveChatHistory(): void {
+        localStorage.setItem(keyChatHistory, JSON.stringify(messages));
+    }
+
+    function loadChatHistory(): void {
+        try {
+            const rawChatHistory = localStorage.getItem(keyChatHistory) ?? "[]";
+            const maybeChatHistory = JSON.parse(rawChatHistory);
+            const parseResult = ChatHistory.safeParse(maybeChatHistory);
+            if (parseResult.success) {
+                messages =
+                    maybeChatHistory as webllm.ChatCompletionMessageParam[];
+                console.log("chat history loaded", messages);
+                return;
+            }
+        } catch (error) {
+            console.error("failed to load chat history", error);
+        }
+
+        messages = [];
+        console.log("empty chat history");
+    }
+
+    function clearChatHistory(): void {
+        const confirmed = confirm(
+            "Clear chat history? This action cannot be reverted.",
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        localStorage.removeItem(keyChatHistory);
+        messages = [];
+    }
+
     onMount(() => {
-        loadSettings();
         settings.selectedModel = defaultModel;
+        loadSettings();
+        loadChatHistory();
         handleSelectedModelUpdated();
     });
 </script>
@@ -441,6 +487,12 @@
             bind:this={pivot}
             on:click={() => processPromt()}>Send</button
         >
+
+        <button
+            class="button clear-chat is-fullwidth mt-2"
+            disabled={loadingModel || thinking}
+            on:click={() => clearChatHistory()}>Clear chat history</button
+        >
     {/if}
 {/if}
 
@@ -478,5 +530,10 @@
 
     select {
         width: 100%;
+    }
+
+    .clear-chat {
+        color: white;
+        background-color: rgb(226, 0, 0);
     }
 </style>
