@@ -376,6 +376,15 @@
         </label>
     </div>
 {:else}
+    <p class="mb-2">
+        <b>
+            Model:
+            <span class="has-text-success">
+                {settings.selectedModel}
+            </span>
+        </b>
+    </p>
+
     <button
         class="button is-fullwidth"
         on:click={() => (settingsVisible = !settingsVisible)}
@@ -390,7 +399,7 @@
             <img src="img/gif2.gif" alt="Error!" />
         {/if}
     {:else if infoMessage.length > 0}
-        <p><b>{infoMessage}</b></p>
+        <p class="mt-2"><b>{infoMessage}</b></p>
     {/if}
 
     {#if settings.animationsEnabled && loadingModel && errorMessage.length === 0}
