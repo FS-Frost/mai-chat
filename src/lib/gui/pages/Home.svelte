@@ -64,6 +64,7 @@
     let thinkingMessage: string = "";
     let thinkingMessageDots: number = 3;
     let messages: webllm.ChatCompletionMessageParam[] = [];
+    let stopStreaming: boolean = false;
 
     $: filteredModels = settings.lowResources
         ? models.filter((x) => x.lowResourcesRequired)
@@ -202,6 +203,10 @@
         writtingResponse = true;
         let fullReplyContent = "";
         for await (const chunk of chunks) {
+            if (stopStreaming) {
+                break;
+            }
+
             const text = chunk.choices[0].delta.content ?? "";
             messages[messages.length - 1].content += text;
             fullReplyContent += text;
@@ -214,6 +219,7 @@
     async function processPromt(): Promise<void> {
         await loadModel();
         thinking = true;
+        stopStreaming = false;
 
         try {
             const userMessage: webllm.ChatCompletionMessageParam = {
@@ -269,6 +275,14 @@
 
         inputPromt.focus();
         thinking = false;
+        writtingResponse = false;
+        stopStreaming = false;
+    }
+
+    function stopResponse(): void {
+        console.log("Stopping response...");
+        stopStreaming = true;
+        engine?.interruptGenerate();
     }
 
     function saveSettings(): void {
@@ -477,16 +491,25 @@
                     bind:value={promt}
                     on:keydown={(e) => handlePromtKeyDown(e.key)}
                     disabled={loadingModel || thinking}
-                />
+                ></textarea>
             </div>
         </div>
 
-        <button
-            class="button is-link is-fullwidth mt-2"
-            disabled={loadingModel || thinking}
-            bind:this={pivot}
-            on:click={() => processPromt()}>Send</button
-        >
+        {#if thinking || writtingResponse}
+            <button
+                class="button is-danger is-fullwidth mt-2"
+                on:click={() => stopResponse()}
+            >
+                Stop response
+            </button>
+        {:else}
+            <button
+                class="button is-link is-fullwidth mt-2"
+                disabled={loadingModel || thinking}
+                bind:this={pivot}
+                on:click={() => processPromt()}>Send</button
+            >
+        {/if}
 
         <button
             class="button clear-chat is-fullwidth mt-2"
