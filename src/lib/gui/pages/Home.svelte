@@ -1,8 +1,9 @@
 <script lang="ts">
     import { models } from "$lib/models";
-    import * as webllm from "@mlc-ai/web-llm";
+    import type * as WebLLMType from "@mlc-ai/web-llm";
     import { marked } from "marked";
     import { onMount, tick } from "svelte";
+    import { browser } from "$app/environment";
     import { z } from "zod";
 
     const InitProgress = z.object({
@@ -54,7 +55,8 @@
     let loadedModel: string = "";
     let inputPromt: HTMLTextAreaElement;
     let pivot: HTMLElement;
-    let engine: webllm.MLCEngine;
+    let webllm: typeof WebLLMType;
+    let engine: WebLLMType.MLCEngine;
     let loadingModel: boolean = false;
     let infoMessage: string = "";
     let errorMessage: string = "";
@@ -63,7 +65,7 @@
     let thinking: boolean = false;
     let thinkingMessage: string = "";
     let thinkingMessageDots: number = 3;
-    let messages: webllm.ChatCompletionMessageParam[] = [];
+    let messages: WebLLMType.ChatCompletionMessageParam[] = [];
     let stopStreaming: boolean = false;
     let historyIndex: number = -1;
 
@@ -97,6 +99,10 @@
             if (settings.selectedModel === loadedModel) {
                 console.log("Model already loaded");
                 return;
+            }
+
+            if (!webllm) {
+                webllm = await import("@mlc-ai/web-llm");
             }
 
             loadingModel = true;
@@ -215,7 +221,7 @@
     }
 
     async function handleFullResponse(
-        messagesToProcess: webllm.ChatCompletionMessageParam[],
+        messagesToProcess: WebLLMType.ChatCompletionMessageParam[],
     ): Promise<string> {
         const reply = await engine.chat.completions.create({
             stream: false,
@@ -230,7 +236,7 @@
     }
 
     async function handleChunksResponse(
-        messagesToProcess: webllm.ChatCompletionMessageParam[],
+        messagesToProcess: WebLLMType.ChatCompletionMessageParam[],
     ): Promise<string> {
         const chunks = await engine.chat.completions.create({
             messages: messagesToProcess,
@@ -260,17 +266,17 @@
         stopStreaming = false;
 
         try {
-            const userMessage: webllm.ChatCompletionMessageParam = {
+            const userMessage: WebLLMType.ChatCompletionMessageParam = {
                 role: "user",
                 content: promt,
             };
 
-            const systemMessage: webllm.ChatCompletionMessageParam = {
+            const systemMessage: WebLLMType.ChatCompletionMessageParam = {
                 role: "system",
                 content: settings.systemMessageContent,
             };
 
-            const messagesToProcess: webllm.ChatCompletionMessageParam[] = [
+            const messagesToProcess: WebLLMType.ChatCompletionMessageParam[] = [
                 systemMessage,
                 ...messages,
                 userMessage,
@@ -364,7 +370,7 @@
             const parseResult = ChatHistory.safeParse(maybeChatHistory);
             if (parseResult.success) {
                 messages =
-                    maybeChatHistory as webllm.ChatCompletionMessageParam[];
+                    maybeChatHistory as WebLLMType.ChatCompletionMessageParam[];
                 console.log("chat history loaded", messages);
                 return;
             }
@@ -429,7 +435,10 @@
         }
     }
 
-    onMount(() => {
+    onMount(async () => {
+        if (browser) {
+            webllm = await import("@mlc-ai/web-llm");
+        }
         settings.selectedModel = defaultModel;
         loadSettings();
         loadChatHistory();
