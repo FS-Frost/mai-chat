@@ -389,6 +389,46 @@
         messages = [];
     }
 
+    async function clearAllData(): Promise<void> {
+        const confirmed = confirm(
+            "Clear all data? This includes models, chat history and settings. This action cannot be reverted.",
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            // Local storage and Session storage
+            localStorage.clear();
+            sessionStorage.clear();
+
+            // Clear all Caches
+            if (typeof caches !== "undefined") {
+                const keys = await caches.keys();
+                await Promise.all(keys.map((key) => caches.delete(key)));
+            }
+
+            // Clear all IndexedDB databases
+            if (typeof indexedDB !== "undefined" && indexedDB.databases) {
+                const dbs = await indexedDB.databases();
+                for (const db of dbs) {
+                    if (db.name) {
+                        indexedDB.deleteDatabase(db.name);
+                    }
+                }
+            }
+
+            // Also reload page to clear memory and start fresh
+            window.location.assign(window.location.origin);
+        } catch (error) {
+            console.error("Failed to clear data:", error);
+            alert(
+                "Failed to clear some data. Please reload the page and try again.",
+            );
+        }
+    }
+
     onMount(() => {
         settings.selectedModel = defaultModel;
         loadSettings();
@@ -405,7 +445,7 @@
 
 {#if settingsVisible}
     <button
-        class="button is-success is-fullwidth"
+        class="button is-success is-fullwidth has-text-white"
         on:click={() => saveSettings()}
         disabled={settings.systemMessageContent.length === 0}
     >
@@ -474,6 +514,13 @@
             Show animations
         </label>
     </div>
+
+    <button
+        class="button clear-chat is-fullwidth mt-4"
+        on:click={() => clearAllData()}
+    >
+        Clear all data
+    </button>
 {:else}
     <p class="mb-2">
         <b>
