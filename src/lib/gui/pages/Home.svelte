@@ -65,6 +65,7 @@
     let thinkingMessageDots: number = 3;
     let messages: webllm.ChatCompletionMessageParam[] = [];
     let stopStreaming: boolean = false;
+    let historyIndex: number = -1;
 
     $: filteredModels = settings.lowResources
         ? models.filter((x) => x.lowResourcesRequired)
@@ -170,9 +171,46 @@
         return role[0].toUpperCase() + role.substring(1);
     }
 
-    function handlePromtKeyDown(key: string): void {
-        if (key === "Enter") {
+    function handlePromtKeyDown(e: KeyboardEvent): void {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
             processPromt();
+            return;
+        }
+
+        const userMsgs = messages
+            .filter((m) => m.role === "user")
+            .map((m) => m.content as string);
+
+        if (e.key === "ArrowUp") {
+            if (userMsgs.length > 0) {
+                e.preventDefault();
+                if (historyIndex === -1) {
+                    historyIndex = userMsgs.length - 1;
+                } else if (historyIndex > 0) {
+                    historyIndex--;
+                }
+                promt = userMsgs[historyIndex];
+                tick().then(() => {
+                    inputPromt.selectionStart = inputPromt.selectionEnd =
+                        promt.length;
+                });
+            }
+        } else if (e.key === "ArrowDown") {
+            if (historyIndex !== -1) {
+                e.preventDefault();
+                if (historyIndex < userMsgs.length - 1) {
+                    historyIndex++;
+                    promt = userMsgs[historyIndex];
+                } else {
+                    historyIndex = -1;
+                    promt = "";
+                }
+                tick().then(() => {
+                    inputPromt.selectionStart = inputPromt.selectionEnd =
+                        promt.length;
+                });
+            }
         }
     }
 
@@ -277,6 +315,7 @@
         thinking = false;
         writtingResponse = false;
         stopStreaming = false;
+        historyIndex = -1;
     }
 
     function stopResponse(): void {
@@ -489,7 +528,7 @@
                     class="input"
                     placeholder="Ask me anything"
                     bind:value={promt}
-                    on:keydown={(e) => handlePromtKeyDown(e.key)}
+                    on:keydown={(e) => handlePromtKeyDown(e)}
                     disabled={loadingModel || thinking}
                 ></textarea>
             </div>
